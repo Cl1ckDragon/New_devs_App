@@ -1,21 +1,29 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, Any, List
+from zoneinfo import ZoneInfo
 
-async def calculate_monthly_revenue(property_id: str, month: int, year: int, db_session=None) -> Decimal:
+
+async def calculate_monthly_revenue(property_id: str, tenant_id: str, month: int, year: int, property_timezone: str = "UTC", db_session=None) -> Decimal:
     """
     Calculates revenue for a specific month.
     """
+    tz = ZoneInfo(property_timezone)
 
-    start_date = datetime(year, month, 1)
+    # BUG HERE: Properties are in different timezones (e.g. Europe/Paris, America/New_York).
+    # Without timezone-aware boundaries, datetime(year, month, 1) defaults to UTC midnight.
+    # A Paris reservation checking in at 2024-02-29 23:30 UTC is actually March 1st local time,
+    # but a naive UTC boundary would exclude it from the March total entirely.
+    # Fix: build boundaries in the property's local timezone, then convert to UTC for the DB query.
+
+    start_date = datetime(year, month, 1, tzinfo=tz).astimezone(ZoneInfo("UTC"))
     if month < 12:
-        end_date = datetime(year, month + 1, 1)
+        end_date = datetime(year, month + 1, 1, tzinfo=tz).astimezone(ZoneInfo("UTC"))
     else:
-        end_date = datetime(year + 1, 1, 1)
-        
+        end_date = datetime(year + 1, 1, 1, tzinfo=tz).astimezone(ZoneInfo("UTC"))
+
     print(f"DEBUG: Querying revenue for {property_id} from {start_date} to {end_date}")
 
-    # SQL Simulation (This would be executed against the actual DB)
     query = """
         SELECT SUM(total_amount) as total
         FROM reservations
